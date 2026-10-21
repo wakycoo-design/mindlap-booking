@@ -14,5 +14,5 @@ export async function reset() {
       time_off, working_hours, staff_service, service, staff, api_key, workflow, holiday restart identity cascade`);
   // The business row survives a reset. Most tests look at the plain wording of a message, so they start with the styled design off;
   // the tests of the design turn it on themselves. Start times go back to the default for tests that change them.
-  await db.execute(sql`update business set email_branded = false, slot_interval_min = 30`);
+  await db.execute(sql`update business set email_branded = false, slot_interval_min = 30, online_payment = false`);
 }

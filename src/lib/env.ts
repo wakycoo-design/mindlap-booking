@@ -17,8 +17,10 @@ export function missingEnv(env: Record<string, string | undefined> = process.env
   const google = Boolean(env.AUTH_GOOGLE_ID && env.AUTH_GOOGLE_SECRET);
   const zoho = Boolean(env.AUTH_ZOHO_ID && env.AUTH_ZOHO_SECRET);
   const local = env.NODE_ENV !== "production" && Boolean(env.LOCAL_LOGIN_PASSWORD);
+  // A firm may sign in with personal passwords only (set with `npm run staff:set-password`).
+  const passwords = env.PASSWORD_LOGIN === "on";
   // Staff need at least one way to sign in.
-  if (!google && !zoho && !local) missing.push("AUTH_GOOGLE_ID+AUTH_GOOGLE_SECRET or AUTH_ZOHO_ID+AUTH_ZOHO_SECRET");
+  if (!google && !zoho && !local && !passwords) missing.push("AUTH_GOOGLE_ID+AUTH_GOOGLE_SECRET or AUTH_ZOHO_ID+AUTH_ZOHO_SECRET or PASSWORD_LOGIN=on");
   return missing;
 }
 
