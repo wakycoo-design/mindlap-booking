@@ -103,8 +103,8 @@ export function createPackagesService(deps: {
      * Keeps a package for every price a therapist charges. Each package the firm made itself (on sale, not a tier) is
      * repeated at every therapist price for its services with the same discount: "4 sessions for ₹3,600" at the ₹1,000
      * tier (10% off) becomes "4 sessions for ₹25,200" at ₹7,000, so one credit covers one session with that therapist.
-     * Tiers nobody charges any more go off sale (buyers keep their credits) and come back if the price does. Packages the
-     * firm made by hand are never changed, and a tier's price edited by hand is kept.
+     * Tiers nobody charges any more go off sale (buyers keep their credits) and come back if the price does, unless the
+     * firm took one off sale itself. Packages the firm made by hand are never changed, and a tier's edited price is kept.
      */
     async syncPriceTiers(actor: Actor) {
       const all = await packagesRepo.list();
@@ -112,7 +112,7 @@ export function createPackagesService(deps: {
       const isTier = (p: PackageDTO) => TIER_SUFFIX.test(p.name);
       const result = { created: [] as PackageDTO[], retired: [] as PackageDTO[], restored: [] as PackageDTO[] };
       const wanted = new Set<string>();
-      const toData = (p: PackageDTO, active: boolean) => packageInput.parse({ ...p, active });
+      const toData = (p: PackageDTO, active: boolean) => packageInput.parse({ ...p, active, retiredAutomatically: !active });
       for (const template of all.filter((p) => p.active && !isTier(p))) {
         const full = template.sessions * template.creditValuePaise;
         const share = full > 0 ? template.pricePaise / full : 1;
@@ -123,7 +123,7 @@ export function createPackagesService(deps: {
           );
           if (match) {
             wanted.add(match.id);
-            if (isTier(match) && !match.active) {
+            if (isTier(match) && !match.active && match.retiredAutomatically) {
               result.restored.push((await packagesRepo.update(match.id, toData(match, true), { actor, action: "update", entity: "package", entityId: match.id }))!);
             }
             continue;
@@ -146,6 +146,26 @@ export function createPackagesService(deps: {
         result.retired.push((await packagesRepo.update(p.id, toData(p, false), { actor, action: "update", entity: "package", entityId: p.id }))!);
       }
       return result;
+    },
+
+    /**
+     * Deletes a package nobody bought. A bought package holds clients' credit and history, so it can only go off sale.
+     * A price tier still in use would be made again at once, so that too is taken off sale instead.
+     */
+    async remove(actor: Actor, id: string) {
+      const pkg = await get(id);
+      const sold = await packagesRepo.timesSold(id);
+      if (sold) {
+        throw new DomainError("conflict", `"${pkg.name}" was bought ${sold === 1 ? "once" : `${sold} times`}, so it can't be deleted. Take it off sale instead.`);
+      }
+      if (TIER_SUFFIX.test(pkg.name)) {
+        const all = await packagesRepo.list();
+        const hasBase = all.some((p) => p.active && !TIER_SUFFIX.test(p.name) && p.sessions === pkg.sessions && p.serviceIds.length === pkg.serviceIds.length && p.serviceIds.every((s) => pkg.serviceIds.includes(s)));
+        if (hasBase && (await pricesFor(pkg.serviceIds)).includes(pkg.creditValuePaise)) {
+          throw new DomainError("invalid", `A therapist still charges ₹${(pkg.creditValuePaise / 100).toLocaleString("en-IN")}, so "${pkg.name}" would be made again. Take it off sale instead.`);
+        }
+      }
+      await packagesRepo.remove(id, { actor, action: "delete", entity: "package", entityId: id });
     },
 
     /** Packages the website may sell: only those on sale. */

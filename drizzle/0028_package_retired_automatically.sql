@@ -1,0 +1,1 @@
+ALTER TABLE "package" ADD COLUMN "retired_automatically" boolean DEFAULT false NOT NULL;

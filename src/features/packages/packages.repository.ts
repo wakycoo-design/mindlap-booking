@@ -30,6 +30,7 @@ const packageColumns = {
   validityDays: servicePackage.validityDays,
   pricePaise: servicePackage.pricePaise,
   active: servicePackage.active,
+  retiredAutomatically: servicePackage.retiredAutomatically,
 };
 
 const clientPackageColumns = {
@@ -213,6 +214,19 @@ export function createPackagesRepository(db: Db) {
         const [row] = await tx.update(servicePackage).set(data).where(eq(servicePackage.id, id)).returning(packageColumns);
         if (row) await writeAudit(tx, audit);
         return row ?? null;
+      });
+    },
+
+    /** How many times clients bought this package (bought packages can't be deleted: they hold credit and history). */
+    async timesSold(id: string): Promise<number> {
+      const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(clientPackage).where(eq(clientPackage.packageId, id));
+      return row?.n ?? 0;
+    },
+
+    remove(id: string, audit: AuditEntry): Promise<void> {
+      return db.transaction(async (tx) => {
+        await tx.delete(servicePackage).where(eq(servicePackage.id, id));
+        await writeAudit(tx, audit);
       });
     },
 

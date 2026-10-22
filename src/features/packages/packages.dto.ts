@@ -20,6 +20,8 @@ export type PackageDTO = {
   validityDays: number | null;
   pricePaise: number;
   active: boolean;
+  /** The app took this price tier off sale itself (nobody charged its price), so it may put it back. */
+  retiredAutomatically: boolean;
 };
 
 /** One package a client bought. Credits are decimals (1.5 = a credit and a half). */

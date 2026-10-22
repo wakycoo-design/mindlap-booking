@@ -404,6 +404,8 @@ export const servicePackage = pgTable("package", {
   /** How much service price one credit covers, in paise (₹1,000 by default): a ₹1,500 service takes 1.5 credits. */
   creditValuePaise: integer("credit_value_paise").notNull().default(100000),
   active: boolean("active").notNull().default(true),
+  /** Set when the app took a price tier off sale because nobody charged its price; it may bring it back. */
+  retiredAutomatically: boolean("retired_automatically").notNull().default(false),
   createdAt: createdAt(),
 }, (t) => [check("package_sessions_positive", sql`${t.sessions} > 0`)]);
 

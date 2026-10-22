@@ -30,6 +30,11 @@ export async function syncPriceTiersAction() {
   await act("/admin/packages", "Price-tier packages are up to date", () => app().packages.syncPriceTiers({ staffId: me.id }));
 }
 
+export async function deletePackageAction(id: string) {
+  const me = await requireStaff("manager");
+  await act("/admin/packages", "Package deleted", () => app().packages.remove({ staffId: me.id }, id));
+}
+
 export async function updatePackageAction(id: string, form: FormData) {
   const me = await requireStaff("manager");
   await act("/admin/packages", "Package saved", () => app().packages.update({ staffId: me.id }, id, packageFromForm(form)));

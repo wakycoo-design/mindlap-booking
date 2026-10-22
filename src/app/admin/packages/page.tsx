@@ -2,7 +2,7 @@ import { app } from "@/features/container";
 import { requireStaff } from "@/lib/session";
 import { Notice } from "@/components/Notice";
 import { PageHeader } from "@/components/Shell";
-import { createPackageAction, syncPriceTiersAction, updatePackageAction } from "./actions";
+import { createPackageAction, deletePackageAction, syncPriceTiersAction, updatePackageAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -64,11 +64,16 @@ export default async function PackagesPage({ searchParams }: { searchParams: Pro
               <span className="w-28 text-right text-sm">{rupees(p.pricePaise)}<span className="block text-xs text-zinc-600">{rupees(Math.round(p.pricePaise / p.sessions))} per credit</span></span>
               <span className="text-xs text-zinc-600">{p.validityDays ? `${p.validityDays} days` : "No expiry"}</span>
               {!p.active && <span className="badge text-zinc-600">Off sale</span>}
+              <span className="text-sm text-zinc-600 underline">Edit</span>
             </summary>
             <form action={updatePackageAction.bind(null, p.id)} className="grid gap-4 border-t border-zinc-100 p-4 sm:grid-cols-2">
               <Fields services={services} p={p} />
               <p className="text-xs text-zinc-600 sm:col-span-2">Changes affect new sales only. Clients who already bought it keep what they bought.</p>
               <div className="sm:col-span-2"><button className="btn" type="submit">Save</button></div>
+            </form>
+            <form action={deletePackageAction.bind(null, p.id)} className="border-t border-zinc-100 px-4 py-3">
+              <button className="btn-ghost text-red-700" type="submit">Delete package</button>
+              <span className="ml-3 text-xs text-zinc-600">Only if nobody bought it. Otherwise untick &ldquo;On sale&rdquo; above.</span>
             </form>
           </details>
         ))}

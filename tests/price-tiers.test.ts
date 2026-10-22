@@ -82,4 +82,41 @@ describe("price-tier packages", () => {
     expect(own).toHaveLength(5);
     expect(own.every((p) => p.active)).toBe(true);
   });
+
+  it("take a therapist's tiers off sale when they are deactivated", async () => {
+    await setup();
+    await c.packages.syncPriceTiers({});
+    const senior = (await c.staff.list()).find((s) => s.name === "Senior")!;
+    await c.staff.update({}, senior.id, { active: false });
+    const { retired } = await c.packages.syncPriceTiers({});
+    expect(retired).toHaveLength(5);
+    expect(retired.every((p) => !p.active && p.retiredAutomatically)).toBe(true);
+  });
+
+  it("leave a tier the firm took off sale off sale", async () => {
+    await setup();
+    const { created } = await c.packages.syncPriceTiers({});
+    const tier = created[0];
+    await c.packages.update({}, tier.id, { ...tier, active: false });
+    const { restored, created: again } = await c.packages.syncPriceTiers({});
+    expect(restored).toEqual([]);
+    expect(again).toEqual([]);
+    expect((await c.packages.get(tier.id)).active).toBe(false);
+  });
+
+  it("delete only packages nobody bought, and not a tier that would be made again", async () => {
+    const { individual } = await setup();
+    const { created } = await c.packages.syncPriceTiers({});
+    const base = (await c.packages.list()).find((p) => p.name === "4 session package" && p.serviceIds[0] === individual.id)!;
+    await c.packages.purchasePackage({}, base.id, { client: { name: "Ravi", phone: "98765 43210" }, amountPaise: 360000, razorpayPaymentId: "pay_tier1" });
+    await expect(c.packages.remove({}, base.id)).rejects.toMatchObject({ code: "conflict" });
+    const tier = created.find((p) => p.serviceIds[0] === individual.id && p.sessions === 4)!;
+    await expect(c.packages.remove({}, tier.id)).rejects.toMatchObject({ code: "invalid" });
+    // Once nobody charges that price, the unsold tier can go.
+    const senior = (await c.staff.list()).find((s) => s.name === "Senior")!;
+    await c.staff.setServicePrices({}, senior.id, { [individual.id]: 500000 });
+    await c.packages.syncPriceTiers({});
+    await c.packages.remove({}, tier.id);
+    await expect(c.packages.get(tier.id)).rejects.toMatchObject({ code: "not_found" });
+  });
 });
