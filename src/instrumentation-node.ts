@@ -10,6 +10,8 @@ export function startWorkflowWorker() {
   const g = globalThis as unknown as { workflowTimer?: NodeJS.Timeout };
   if (g.workflowTimer) return; // dev reloads call register() again
   let running = false;
+  // Every run touches Postgres, so a longer gap lets a scale-to-zero database (Neon) sleep between runs. Reminders then arrive up to this many seconds late.
+  const everySec = Math.max(10, Number(process.env.WORKFLOW_INTERVAL_SEC) || 30);
   g.workflowTimer = setInterval(async () => {
     if (running) return;
     running = true;
@@ -26,6 +28,6 @@ export function startWorkflowWorker() {
     } finally {
       running = false;
     }
-  }, 30_000);
+  }, everySec * 1000);
   g.workflowTimer.unref();
 }
