@@ -158,6 +158,11 @@ export function createContainer(db: Db, opts: {
         const own = staffId ? await bookingsRepo.staffPrice(staffId, serviceId) : null;
         return { serviceName: svc.name, owes: own !== null ? own > 0 : hasPrice(svc), pricePaise: own ?? svc.pricePaise };
       },
+      async pricesFor(serviceIds) {
+        const ids = serviceIds.length ? serviceIds : (await catalogRepo.list()).filter((s) => s.active).map((s) => s.id);
+        const people = (await Promise.all(ids.map((id) => staffRepo.listBookableForService(id)))).flat();
+        return [...new Set(people.map((p) => p.pricePaise).filter((p): p is number => p !== null))].sort((a, b) => a - b);
+      },
     }),
     payments: createPaymentsService({
       paymentsRepo: createPaymentsRepository(db),

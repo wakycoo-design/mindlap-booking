@@ -7,6 +7,8 @@ import type { PackagesRepository } from "./packages.repository";
 import { packageInput, packagePurchaseInput, sellInput, topUpInput, walletTopUpInput } from "./packages.schemas";
 
 const DAY = 86_400_000;
+/** Marks a package made for one price tier, e.g. "4 session individual therapy · ₹7,000 tier". */
+export const TIER_SUFFIX = / · ₹[\d,]+ tier$/;
 
 /** The form a website sends a client in, as the stored contact. */
 const toContact = (c: { name: string; phone: string; email?: string | null; whatsappOptIn: boolean }): ClientContact => ({
@@ -25,8 +27,10 @@ export function createPackagesService(deps: {
   packagesRepo: PackagesRepository;
   /** What a service costs with a given person (their own price if they have one), for quotes. */
   priceFor: (serviceId: string, staffId: string | null) => Promise<{ serviceName: string; owes: boolean; pricePaise: number | null }>;
+  /** Every price (paise) the people offering these services charge for them. Empty means any service. */
+  pricesFor: (serviceIds: string[]) => Promise<number[]>;
 }) {
-  const { packagesRepo, priceFor } = deps;
+  const { packagesRepo, priceFor, pricesFor } = deps;
 
   async function checkServices(serviceIds: string[]) {
     if (!serviceIds.length) return;
@@ -93,6 +97,39 @@ export function createPackagesService(deps: {
       const price = await priceFor(input.serviceId, input.staffId ?? null);
       const plan = await packagesRepo.quote(clientId, { serviceId: input.serviceId, owes: price.owes, pricePaise: price.pricePaise, now });
       return { serviceName: price.serviceName, pricePaise: price.pricePaise, plan };
+    },
+
+    /**
+     * Makes each package on sale available at every price a therapist charges for its services, keeping that package's
+     * own discount: "4 sessions for ₹3,600" at the ₹1,000 tier (10% off) becomes "4 sessions for ₹25,200" at a ₹7,000 tier.
+     * One credit then covers exactly one session with those therapists. Tiers that already exist are left alone.
+     */
+    async createPriceTiers(actor: Actor) {
+      const all = await packagesRepo.list();
+      const sameServices = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
+      const created: PackageDTO[] = [];
+      for (const template of all.filter((p) => p.active)) {
+        const full = template.sessions * template.creditValuePaise;
+        const share = full > 0 ? template.pricePaise / full : 1;
+        const baseName = template.name.replace(TIER_SUFFIX, "");
+        for (const price of await pricesFor(template.serviceIds)) {
+          const exists = [...all, ...created].some(
+            (p) => p.sessions === template.sessions && p.creditValuePaise === price && sameServices(p.serviceIds, template.serviceIds),
+          );
+          if (price <= 0 || exists) continue;
+          const data = packageInput.parse({
+            name: `${baseName} · ₹${(price / 100).toLocaleString("en-IN")} tier`,
+            serviceIds: template.serviceIds,
+            sessions: template.sessions,
+            creditValuePaise: price,
+            validityDays: template.validityDays,
+            // Whole rupees, so the price reads cleanly on the site and in Razorpay.
+            pricePaise: Math.round((template.sessions * price * share) / 100) * 100,
+          });
+          created.push(await packagesRepo.create(data, { actor, action: "create", entity: "package" }));
+        }
+      }
+      return created;
     },
 
     /** Packages the website may sell: only those on sale. */
