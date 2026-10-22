@@ -19,7 +19,7 @@ export function smtpPassword(env: Env): string | undefined {
 
 /** SMTP works with Zoho Mail, Gmail, SES and most providers: the firm picks one in its environment settings. */
 function emailSender(env: Env): Sender {
-  let transport: nodemailer.Transporter | undefined;
+  let transport: ReturnType<typeof nodemailer.createTransport> | undefined;
   return async (msg: OutgoingMessage) => {
     if (msg.channel !== "email") throw new Error("Wrong channel");
     if (!env.SMTP_HOST || !env.EMAIL_FROM) throw new NotConfigured("Email isn't set up yet. Set SMTP_HOST, SMTP_USER, SMTP_PASS and EMAIL_FROM.");
