@@ -100,25 +100,36 @@ export function createPackagesService(deps: {
     },
 
     /**
-     * Makes each package on sale available at every price a therapist charges for its services, keeping that package's
-     * own discount: "4 sessions for ₹3,600" at the ₹1,000 tier (10% off) becomes "4 sessions for ₹25,200" at a ₹7,000 tier.
-     * One credit then covers exactly one session with those therapists. Tiers that already exist are left alone.
+     * Keeps a package for every price a therapist charges. Each package the firm made itself (on sale, not a tier) is
+     * repeated at every therapist price for its services with the same discount: "4 sessions for ₹3,600" at the ₹1,000
+     * tier (10% off) becomes "4 sessions for ₹25,200" at ₹7,000, so one credit covers one session with that therapist.
+     * Tiers nobody charges any more go off sale (buyers keep their credits) and come back if the price does. Packages the
+     * firm made by hand are never changed, and a tier's price edited by hand is kept.
      */
-    async createPriceTiers(actor: Actor) {
+    async syncPriceTiers(actor: Actor) {
       const all = await packagesRepo.list();
       const sameServices = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
-      const created: PackageDTO[] = [];
-      for (const template of all.filter((p) => p.active)) {
+      const isTier = (p: PackageDTO) => TIER_SUFFIX.test(p.name);
+      const result = { created: [] as PackageDTO[], retired: [] as PackageDTO[], restored: [] as PackageDTO[] };
+      const wanted = new Set<string>();
+      const toData = (p: PackageDTO, active: boolean) => packageInput.parse({ ...p, active });
+      for (const template of all.filter((p) => p.active && !isTier(p))) {
         const full = template.sessions * template.creditValuePaise;
         const share = full > 0 ? template.pricePaise / full : 1;
-        const baseName = template.name.replace(TIER_SUFFIX, "");
         for (const price of await pricesFor(template.serviceIds)) {
-          const exists = [...all, ...created].some(
+          if (price <= 0 || price === template.creditValuePaise) continue;
+          const match = [...all, ...result.created].find(
             (p) => p.sessions === template.sessions && p.creditValuePaise === price && sameServices(p.serviceIds, template.serviceIds),
           );
-          if (price <= 0 || exists) continue;
+          if (match) {
+            wanted.add(match.id);
+            if (isTier(match) && !match.active) {
+              result.restored.push((await packagesRepo.update(match.id, toData(match, true), { actor, action: "update", entity: "package", entityId: match.id }))!);
+            }
+            continue;
+          }
           const data = packageInput.parse({
-            name: `${baseName} · ₹${(price / 100).toLocaleString("en-IN")} tier`,
+            name: `${template.name} · ₹${(price / 100).toLocaleString("en-IN")} tier`,
             serviceIds: template.serviceIds,
             sessions: template.sessions,
             creditValuePaise: price,
@@ -126,10 +137,15 @@ export function createPackagesService(deps: {
             // Whole rupees, so the price reads cleanly on the site and in Razorpay.
             pricePaise: Math.round((template.sessions * price * share) / 100) * 100,
           });
-          created.push(await packagesRepo.create(data, { actor, action: "create", entity: "package" }));
+          const made = await packagesRepo.create(data, { actor, action: "create", entity: "package" });
+          result.created.push(made);
+          wanted.add(made.id);
         }
       }
-      return created;
+      for (const p of all.filter((p) => isTier(p) && p.active && !wanted.has(p.id))) {
+        result.retired.push((await packagesRepo.update(p.id, toData(p, false), { actor, action: "update", entity: "package", entityId: p.id }))!);
+      }
+      return result;
     },
 
     /** Packages the website may sell: only those on sale. */

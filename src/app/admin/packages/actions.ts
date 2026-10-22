@@ -25,9 +25,9 @@ export async function createPackageAction(form: FormData) {
   await act("/admin/packages", "Package added", () => app().packages.create({ staffId: me.id }, packageFromForm(form)));
 }
 
-export async function createPriceTiersAction() {
+export async function syncPriceTiersAction() {
   const me = await requireStaff("manager");
-  await act("/admin/packages", "Price-tier packages are up to date", () => app().packages.createPriceTiers({ staffId: me.id }));
+  await act("/admin/packages", "Price-tier packages are up to date", () => app().packages.syncPriceTiers({ staffId: me.id }));
 }
 
 export async function updatePackageAction(id: string, form: FormData) {

@@ -28,7 +28,7 @@ async function setup() {
 describe("price-tier packages", () => {
   it("repeat each package at every therapist's price with the same discount", async () => {
     const { individual, couple } = await setup();
-    const created = await c.packages.createPriceTiers({});
+    const { created } = await c.packages.syncPriceTiers({});
     expect(created).toHaveLength(5); // one new tier (the ₹7,000 / ₹9,000 therapist) per base package
     const tier = (serviceId: string, sessions: number) =>
       created.find((p) => p.serviceIds[0] === serviceId && p.sessions === sessions);
@@ -43,15 +43,43 @@ describe("price-tier packages", () => {
 
   it("add nothing the second time, and only the missing tier after a price changes", async () => {
     const { individual } = await setup();
-    await c.packages.createPriceTiers({});
-    expect(await c.packages.createPriceTiers({})).toEqual([]);
+    await c.packages.syncPriceTiers({});
+    expect(await c.packages.syncPriceTiers({})).toEqual({ created: [], retired: [], restored: [] });
     const senior = (await c.staff.list()).find((s) => s.name === "Senior")!;
     await c.staff.setServicePrices({}, senior.id, { [individual.id]: 500000 });
-    const added = await c.packages.createPriceTiers({});
+    const { created: added, retired } = await c.packages.syncPriceTiers({});
+    // Nobody charges ₹7,000 for individual therapy any more: those three tiers go off sale.
+    expect(retired.map((p) => [p.sessions, p.creditValuePaise, p.active]).sort((a, b) => Number(a[0]) - Number(b[0]))).toEqual([
+      [4, 700000, false],
+      [8, 700000, false],
+      [12, 700000, false],
+    ]);
     expect(added.map((p) => [p.sessions, p.creditValuePaise, p.pricePaise]).sort((a, b) => a[0] - b[0])).toEqual([
       [4, 500000, 1800000],
       [8, 500000, 3400000],
       [12, 500000, 4800000],
     ]);
+  });
+
+  it("put a tier back on sale when its price returns, and keep a hand-edited tier price", async () => {
+    const { individual } = await setup();
+    const { created } = await c.packages.syncPriceTiers({});
+    const four = created.find((p) => p.serviceIds[0] === individual.id && p.sessions === 4)!;
+    await c.packages.update({}, four.id, { ...four, pricePaise: 2400000 });
+    const senior = (await c.staff.list()).find((s) => s.name === "Senior")!;
+    await c.staff.setServicePrices({}, senior.id, { [individual.id]: 500000 });
+    await c.packages.syncPriceTiers({});
+    await c.staff.setServicePrices({}, senior.id, { [individual.id]: 700000 });
+    const { restored, created: again } = await c.packages.syncPriceTiers({});
+    expect(again).toEqual([]);
+    expect(restored.find((p) => p.id === four.id)).toMatchObject({ active: true, pricePaise: 2400000 });
+  });
+
+  it("never touch packages the firm made by hand", async () => {
+    await setup();
+    await c.packages.syncPriceTiers({});
+    const own = (await c.packages.list()).filter((p) => !/tier$/.test(p.name));
+    expect(own).toHaveLength(5);
+    expect(own.every((p) => p.active)).toBe(true);
   });
 });

@@ -2,7 +2,7 @@ import { app } from "@/features/container";
 import { requireStaff } from "@/lib/session";
 import { Notice } from "@/components/Notice";
 import { PageHeader } from "@/components/Shell";
-import { createPackageAction, createPriceTiersAction, updatePackageAction } from "./actions";
+import { createPackageAction, syncPriceTiersAction, updatePackageAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -76,10 +76,11 @@ export default async function PackagesPage({ searchParams }: { searchParams: Pro
       <section className="card mb-6 max-w-2xl p-6">
         <h2 className="mb-2 font-semibold">Packages for every therapist price</h2>
         <p className="mb-4 text-sm text-zinc-600">
-          Creates each package above at every price your therapists charge, with the same discount. The website shows each
-          client only the packages for the therapist they chose. Run it again after changing a therapist&apos;s price.
+          Each package you add is repeated at every price your therapists charge, with the same discount (marked
+          &ldquo;· ₹… tier&rdquo;). This happens by itself when you save a therapist or a service; tiers nobody charges any more
+          go off sale. The website shows each client only the packages for the therapist they chose.
         </p>
-        <form action={createPriceTiersAction}><button className="btn" type="submit">Create price-tier packages</button></form>
+        <form action={syncPriceTiersAction}><button className="btn-ghost" type="submit">Update price-tier packages now</button></form>
       </section>
       <section className="card max-w-2xl p-6">
         <h2 className="mb-5 font-semibold">Add a package</h2>

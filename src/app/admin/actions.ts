@@ -68,6 +68,8 @@ export async function updateStaffAction(staffId: string, form: FormData) {
     );
     if (Object.values(prices).some((p) => p !== null && Number.isNaN(p))) throw new DomainError("invalid", "Enter prices as plain numbers, e.g. 2500");
     await app().staff.setServicePrices({ staffId: me.id }, staffId, prices);
+    // Packages follow the prices: a new price gets its own packages straight away.
+    await app().packages.syncPriceTiers({ staffId: me.id });
   });
 }
 
@@ -124,9 +126,11 @@ export async function createServiceAction(form: FormData) {
 
 export async function updateServiceAction(serviceId: string, form: FormData) {
   const me = await requireStaff("manager");
-  await act(`/admin/services/${serviceId}`, "Saved", () =>
-    app().catalog.update({ staffId: me.id }, serviceId, { ...serviceFields(form), active: form.get("active") === "on" }),
-  );
+  await act(`/admin/services/${serviceId}`, "Saved", async () => {
+    await app().catalog.update({ staffId: me.id }, serviceId, { ...serviceFields(form), active: form.get("active") === "on" });
+    // A new base price changes what therapists without their own price charge, so their packages follow.
+    await app().packages.syncPriceTiers({ staffId: me.id });
+  });
 }
 
 export async function setDateOverrideAction(staffId: string, form: FormData) {
