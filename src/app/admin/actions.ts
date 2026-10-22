@@ -133,6 +133,14 @@ export async function updateServiceAction(serviceId: string, form: FormData) {
   });
 }
 
+export async function deleteServiceAction(serviceId: string) {
+  const me = await requireStaff("manager");
+  await act(`/admin/services/${serviceId}`, "Service deleted", async () => {
+    await app().catalog.remove({ staffId: me.id }, serviceId);
+    return "/admin/services";
+  });
+}
+
 export async function setDateOverrideAction(staffId: string, form: FormData) {
   const me = await requireSelfOrManager(staffId);
   await act(`/admin/staff/${staffId}`, "Date-specific hours saved", async () => {

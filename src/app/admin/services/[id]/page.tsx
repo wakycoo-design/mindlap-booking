@@ -5,7 +5,7 @@ import { requireStaff } from "@/lib/session";
 import { Notice } from "@/components/Notice";
 import { PageHeader } from "@/components/Shell";
 import { ServiceFields } from "@/components/ServiceFields";
-import { updateServiceAction } from "../../actions";
+import { deleteServiceAction, updateServiceAction } from "../../actions";
 
 export default async function ServiceDetail({
   params,
@@ -31,6 +31,11 @@ export default async function ServiceDetail({
           <input type="checkbox" className="toggle" name="active" defaultChecked={s.active} /> Bookable
         </label>
         <div className="sm:col-span-2"><button className="btn" type="submit">Save</button></div>
+      </form>
+      <form action={deleteServiceAction.bind(null, id)} className="card mt-4 max-w-2xl p-6">
+        <h2 className="mb-1 font-semibold">Delete service</h2>
+        <p className="mb-4 text-sm text-zinc-600">Only for a service nobody has booked and no package or workflow uses. Otherwise untick Bookable above to hide it.</p>
+        <button className="btn-ghost text-red-700" type="submit">Delete service</button>
       </form>
     </>
   );

@@ -1,6 +1,6 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import type { Db } from "@/db";
-import { service } from "@/db/schema";
+import { booking, service, servicePackage, workflow } from "@/db/schema";
 import { writeAudit } from "@/features/audit/audit.repository";
 import type { AuditEntry } from "@/features/audit/audit.types";
 import type { ServiceDTO } from "./catalog.dto";
@@ -42,6 +42,25 @@ export function createCatalogRepository(db: Db) {
         const [row] = await tx.insert(service).values(data).returning(columns);
         await writeAudit(tx, { ...audit, entityId: row.id });
         return row;
+      });
+    },
+
+    /** What still points at a service: bookings (past or future), packages that cover it, workflows limited to it. */
+    async usage(id: string): Promise<{ bookings: number; packages: number; workflows: number }> {
+      const count = sql<number>`count(*)::int`;
+      const [[b], [p], [w]] = await Promise.all([
+        db.select({ n: count }).from(booking).where(eq(booking.serviceId, id)),
+        db.select({ n: count }).from(servicePackage).where(sql`${id}::uuid = any(${servicePackage.serviceIds})`),
+        db.select({ n: count }).from(workflow).where(sql`${id}::uuid = any(${workflow.serviceIds})`),
+      ]);
+      return { bookings: b?.n ?? 0, packages: p?.n ?? 0, workflows: w?.n ?? 0 };
+    },
+
+    /** Deletes the service; who offers it and any open holds on it go with it (cascade). */
+    remove(id: string, audit: AuditEntry): Promise<void> {
+      return db.transaction(async (tx) => {
+        await tx.delete(service).where(eq(service.id, id));
+        await writeAudit(tx, audit);
       });
     },
 

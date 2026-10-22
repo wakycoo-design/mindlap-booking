@@ -31,6 +31,26 @@ export function createCatalogService({ catalogRepo }: { catalogRepo: CatalogRepo
       if (!row) throw new DomainError("not_found", `Service ${id} not found`);
       return row;
     },
+
+    /**
+     * Deletes a service nobody has booked. Bookings, packages and workflows keep pointing at the services they were made
+     * for (history, credit, reminders), so while any do, the service can only be made not bookable.
+     */
+    async remove(actor: Actor, id: string) {
+      const svc = await get(id);
+      const used = await catalogRepo.usage(id);
+      const times = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
+      if (used.bookings) {
+        throw new DomainError("conflict", `"${svc.name}" is in ${times(used.bookings, "booking")}, so it can't be deleted. Untick Bookable to hide it instead.`);
+      }
+      if (used.packages) {
+        throw new DomainError("conflict", `"${svc.name}" is covered by ${times(used.packages, "package")}. Remove it from them first, or untick Bookable.`);
+      }
+      if (used.workflows) {
+        throw new DomainError("conflict", `"${svc.name}" is chosen in ${times(used.workflows, "workflow")}. Remove it from them first, or untick Bookable.`);
+      }
+      await catalogRepo.remove(id, { actor, action: "delete", entity: "service", entityId: id });
+    },
   };
 }
 
